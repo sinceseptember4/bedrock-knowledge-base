@@ -2,11 +2,11 @@ import express from 'express';
 import http from 'http';
 import path from 'path';
 import { Server } from 'socket.io';
-//import { fromIni } from "@aws-sdk/credential-providers";
-//import { defaultProvider } from "@aws-sdk/credential-provider-node";
-import { fromLoginCredentials } from "@aws-sdk/credential-providers";
+import { fromIni } from "@aws-sdk/credential-providers";
+import { defaultProvider } from "@aws-sdk/credential-provider-node";
 import { NovaSonicBidirectionalStreamClient, StreamSession } from './client';
 import { Buffer } from 'node:buffer';
+import { fromLoginCredentials } from "@aws-sdk/credential-providers";
 
 // Create Express app and HTTP server
 const app = express();

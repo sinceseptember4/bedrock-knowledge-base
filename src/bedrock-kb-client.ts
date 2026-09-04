@@ -48,11 +48,11 @@ class BedrockKnowledgeBaseClient {
                 retrievalQuery: {
                     text: query
                 },
-                retrievalConfiguration: {
-                    vectorSearchConfiguration: {
-                        numberOfResults
-                    }
-                }
+retrievalConfiguration: {
+    managedSearchConfiguration: {
+        numberOfResults
+    }
+}
             };
 
             // Execute the retrieval command

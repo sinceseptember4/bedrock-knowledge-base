@@ -240,7 +240,7 @@ export class NovaSonicBidirectionalStreamClient {
     const tool = toolName.toLowerCase();
 
     switch (tool) {
-      case "retrieve_benefit_policy":
+      case "search_construction_rental":
         console.log(`Retrieving company benefits: ${JSON.stringify(toolUseContent)}`);
         const kbContent = await this.parseToolUseContent(toolUseContent);
         if (!kbContent) {
@@ -253,12 +253,12 @@ export class NovaSonicBidirectionalStreamClient {
     }
   }
 
-  private async queryBenefitPolicy(query: string, numberOfResults: number = 3): Promise<Object> {
+private async queryBenefitPolicy(query: string, numberOfResults: number = 3): Promise<Object> {
     // Create a client instance
-    const kbClient = new BedrockKnowledgeBaseClient();
+  const kbClient = new BedrockKnowledgeBaseClient("ap-northeast-1");
 
-    // Replace with your actual Knowledge Base ID
-    const KNOWLEDGE_BASE_ID = 'TZN7QB6GFH';
+  // 君の実際のKnowledge Base ID
+  const KNOWLEDGE_BASE_ID = "NYXES4ASWH";
 
     try {
       console.log(`Searching for: "${query}"`);
@@ -317,7 +317,7 @@ export class NovaSonicBidirectionalStreamClient {
 
       const response = await this.bedrockRuntimeClient.send(
         new InvokeModelWithBidirectionalStreamCommand({
-          modelId: "amazon.nova-sonic-v1:0",
+          modelId: "amazon.nova-2-sonic-v1:0",
           body: asyncIterable,
         })
       );
@@ -612,19 +612,21 @@ export class NovaSonicBidirectionalStreamClient {
             mediaType: "application/json",
           },
           toolConfiguration: {
-            "toolChoice": {
-              "tool": { "name": "retrieve_benefit_policy" }
-            },
-            tools: [{
-              toolSpec: {
-                name: "retrieve_benefit_policy",
-                description: "Retrieves aglia company benefit policy. It includes medical, vision, financial etc.. Anything related with employee policy.",
-                inputSchema: {
-                  json: KnowledgeBaseToolSchema
-                }
-              }
-            }
-            ]
+toolChoice: {
+  tool: { name: "search_construction_rental" }
+},
+tools: [
+  {
+    toolSpec: {
+      name: "search_construction_rental",
+      description:
+        "株式会社オオタ機材レンタルのKnowledge Baseを検索します。建設機械の商品情報、型番、料金、営業時間、レンタル条件、在庫、配送、燃料費、オペレーター料金など、会社固有の情報を確認する必要がある場合に使用してください。Knowledge Baseに情報がない場合は推測せず、その旨を伝えてください。",
+      inputSchema: {
+        json: KnowledgeBaseToolSchema
+      }
+    }
+  }
+]
           },
         },
       }
