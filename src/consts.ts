@@ -36,6 +36,58 @@ export const WeatherToolSchema = JSON.stringify({
   "required": ["latitude", "longitude"]
 });
 
+export const AvailabilityToolSchema = JSON.stringify({
+  "type": "object",
+  "properties": {
+    "productId": {
+      "type": "string",
+      "description": "レンタルする商品のID。例: EXC-001"
+    },
+    "startAt": {
+      "type": "string",
+      "description": "レンタル開始日時。ISO 8601形式。例: 2026-09-10T09:00:00+09:00"
+    },
+    "endAt": {
+      "type": "string",
+      "description": "レンタル終了日時。ISO 8601形式。例: 2026-09-12T18:00:00+09:00"
+    }
+  },
+  "required": ["productId", "startAt", "endAt"]
+});
+
+export const ReservationToolSchema = JSON.stringify({
+  "type": "object",
+  "properties": {
+    "productId": {
+      "type": "string",
+      "description": "レンタルする商品のID。例: EXC-001"
+    },
+    "startAt": {
+      "type": "string",
+      "description": "レンタル開始日時。ISO 8601形式。例: 2026-09-10T09:00:00+09:00"
+    },
+    "endAt": {
+      "type": "string",
+      "description": "レンタル終了日時。ISO 8601形式。例: 2026-09-12T18:00:00+09:00"
+    },
+    "customerName": {
+      "type": "string",
+      "description": "予約者の氏名"
+    },
+    "confirmed": {
+      "type": "boolean",
+      "description": "ユーザーが予約内容を確認し、明確に予約を確定する意思を示した場合のみtrue"
+    }
+  },
+  "required": [
+    "productId",
+    "startAt",
+    "endAt",
+    "customerName",
+    "confirmed"
+  ]
+});
+
 export const KnowledgeBaseToolSchema = JSON.stringify({
   "type": "object",
   "properties": {
@@ -69,6 +121,18 @@ export const DefaultSystemPrompt = `
 6. 音声で会話しているため、回答は簡潔で自然な話し言葉にしてください。
 
 7. ユーザーが建設機械とは関係ない質問をした場合は、対応できる範囲を簡潔に説明してください。
+
+8. ユーザーがレンタルを希望した場合、商品・レンタル開始日時・終了日時・氏名を確認してください。
+
+9. レンタル日時が決まったら、必ず check_equipment_availability ツールを使用して空き状況を確認してください。
+
+10. 予約内容が揃ったら、商品名・レンタル日時・氏名をユーザーに復唱して確認してください。
+
+11. ユーザーが明確に予約を確定する意思を示すまで、create_reservation ツールを使用してはいけません。
+
+12. ユーザーが「はい」「お願いします」など、予約内容を確認した明確な意思表示をした場合のみ、confirmed=trueとしてcreate_reservationを使用してください。
+
+13. 予約日時は推測せず、ユーザーから聞いた日時を使用してください。
 `;
 
 

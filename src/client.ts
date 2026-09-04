@@ -21,8 +21,16 @@ import {
   DefaultSystemPrompt,
   DefaultTextConfiguration,
   KnowledgeBaseToolSchema,
+  AvailabilityToolSchema,
+  ReservationToolSchema,
 } from "./consts";
+
 import { BedrockKnowledgeBaseClient } from "./bedrock-kb-client";
+
+import {
+  checkAvailability,
+  createReservation,
+} from "./dynamodb-client";
 
 export interface NovaSonicBidirectionalStreamClientConfig {
   requestHandlerConfig?:
@@ -236,22 +244,79 @@ export class NovaSonicBidirectionalStreamClient {
     return new StreamSession(sessionId, this);
   }
 
-  private async processToolUse(toolName: string, toolUseContent: object): Promise<Object> {
-    const tool = toolName.toLowerCase();
+private async processToolUse(
+  toolName: string,
+  toolUseContent: object
+): Promise<Object> {
 
-    switch (tool) {
-      case "search_construction_rental":
-        console.log(`Retrieving company benefits: ${JSON.stringify(toolUseContent)}`);
-        const kbContent = await this.parseToolUseContent(toolUseContent);
-        if (!kbContent) {
-          throw new Error('parsedContent is undefined');
-        }
-        return this.queryBenefitPolicy(kbContent?.query, kbContent?.maxResults);
-      default:
-        console.log(`Tool ${tool} not supported`)
-        throw new Error(`Tool ${tool} not supported`);
+  const tool = toolName.toLowerCase();
+
+  switch (tool) {
+
+    case "search_construction_rental": {
+      console.log(
+        `Searching construction rental KB: ${JSON.stringify(toolUseContent)}`
+      );
+
+      const content = await this.parseToolUseContent(toolUseContent);
+
+      if (!content) {
+        throw new Error("Invalid KB tool content");
+      }
+
+      return this.queryBenefitPolicy(
+        content.query,
+        content.maxResults
+      );
     }
+
+    case "check_equipment_availability": {
+      console.log(
+        `Checking equipment availability: ${JSON.stringify(toolUseContent)}`
+      );
+
+      const content = await this.parseToolUseContent(toolUseContent);
+
+      if (!content) {
+        throw new Error("Invalid availability tool content");
+      }
+
+      const available = await checkAvailability(
+        content.productId,
+        content.startAt,
+        content.endAt
+      );
+
+      return {
+        available
+      };
+    }
+
+    case "create_reservation": {
+      console.log(
+        `Creating reservation: ${JSON.stringify(toolUseContent)}`
+      );
+
+      const content = await this.parseToolUseContent(toolUseContent);
+
+      if (!content) {
+        throw new Error("Invalid reservation tool content");
+      }
+
+      return createReservation(
+        content.productId,
+        content.startAt,
+        content.endAt,
+        content.customerName,
+        content.confirmed
+      );
+    }
+
+    default:
+      console.log(`Tool ${tool} not supported`);
+      throw new Error(`Tool ${tool} not supported`);
   }
+}
 
 private async queryBenefitPolicy(query: string, numberOfResults: number = 3): Promise<Object> {
     // Create a client instance
@@ -280,26 +345,36 @@ private async queryBenefitPolicy(query: string, numberOfResults: number = 3): Pr
     }
   }
 
-  private async parseToolUseContent(toolUseContent: any): Promise<{ query: string; maxResults: number; } | null> {
-    try {
-      // Check if the content field exists and is a string
-      if (toolUseContent && typeof toolUseContent.content === 'string') {
-        // Parse the JSON string into an object
-        const parsedContent = JSON.parse(toolUseContent.content);
+private async parseToolUseContent(
+  toolUseContent: any
+): Promise<any | null> {
 
-        // Return the parsed content
-        return {
-          query: parsedContent.query,
-          maxResults: parsedContent?.maxResults
-        };
-      }
+  try {
 
-      return null;
-    } catch (error) {
-      console.error("Failed to parse tool use content:", error);
-      return null;
+    if (
+      toolUseContent &&
+      typeof toolUseContent.content === "string"
+    ) {
+
+      const parsedContent = JSON.parse(
+        toolUseContent.content
+      );
+
+      return parsedContent;
     }
+
+    return null;
+
+  } catch (error) {
+
+    console.error(
+      "Failed to parse tool use content:",
+      error
+    );
+
+    return null;
   }
+}
 
   // Stream audio for a specific session
   public async initiateBidirectionalStreaming(sessionId: string): Promise<void> {
@@ -612,17 +687,35 @@ private async queryBenefitPolicy(query: string, numberOfResults: number = 3): Pr
             mediaType: "application/json",
           },
           toolConfiguration: {
-toolChoice: {
-  tool: { name: "search_construction_rental" }
-},
+
 tools: [
   {
     toolSpec: {
       name: "search_construction_rental",
       description:
-        "株式会社オオタ機材レンタルのKnowledge Baseを検索します。建設機械の商品情報、型番、料金、営業時間、レンタル条件、在庫、配送、燃料費、オペレーター料金など、会社固有の情報を確認する必要がある場合に使用してください。Knowledge Baseに情報がない場合は推測せず、その旨を伝えてください。",
+        "株式会社オオタ機材レンタルのKnowledge Baseを検索します。建設機械の商品情報、型番、料金、営業時間、レンタル条件など、会社固有の情報を確認する場合に使用してください。",
       inputSchema: {
         json: KnowledgeBaseToolSchema
+      }
+    }
+  },
+  {
+    toolSpec: {
+      name: "check_equipment_availability",
+      description:
+        "指定された商品について、指定されたレンタル開始日時と終了日時の予約空き状況を確認します。レンタル日時が決まった場合に使用してください。",
+      inputSchema: {
+        json: AvailabilityToolSchema
+      }
+    }
+  },
+  {
+    toolSpec: {
+      name: "create_reservation",
+      description:
+        "レンタル予約を確定してDynamoDBに登録します。ユーザーが予約内容を確認し、明確に予約を確定する意思を示した場合のみ使用してください。",
+      inputSchema: {
+        json: ReservationToolSchema
       }
     }
   }
