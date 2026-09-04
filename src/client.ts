@@ -280,7 +280,8 @@ private async processToolUse(
       if (!content) {
         throw new Error("Invalid availability tool content");
       }
-
+console.log("=== AVAILABILITY TOOL CONTENT ===");
+console.log(JSON.stringify(content, null, 2));
       const available = await checkAvailability(
         content.productId,
         content.startAt,
@@ -302,7 +303,8 @@ private async processToolUse(
       if (!content) {
         throw new Error("Invalid reservation tool content");
       }
-
+  console.log("=== RESERVATION TOOL CONTENT ===");
+  console.log(JSON.stringify(content, null, 2));
       return createReservation(
         content.productId,
         content.startAt,
