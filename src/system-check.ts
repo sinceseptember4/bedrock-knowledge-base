@@ -46,8 +46,7 @@ function checkBluetooth() {
     return false;
   }
 }
-
-export function runSystemCheck() {
+export function runSystemCheck(): boolean {
   console.log("\n================================");
   console.log("🔎 システムチェック開始");
   console.log("================================\n");
@@ -61,10 +60,11 @@ export function runSystemCheck() {
     console.error("❌ システムチェック失敗");
     console.error("   サービスを起動しません");
     console.log("================================\n");
-
-    process.exit(1);
+    return false;
   }
 
   console.log("✅ システムチェック完了");
   console.log("================================\n");
+
+  return true;
 }

@@ -1,82 +1,20 @@
-import { execFileSync } from "child_process";
+import { runSystemCheck } from "./system-check";
 
-const PHONE_MAC = "08:87:C7:41:A7:8B";
+async function main() {
+  const ok = runSystemCheck();
 
-function checkAWS(): boolean {
-  console.log("🔐 AWS認証確認...");
-
-  try {
-    const result = execFileSync(
-      "aws",
-      ["sts", "get-caller-identity", "--profile", "default"],
-      {
-        encoding: "utf8",
-        stdio: ["ignore", "pipe", "pipe"],
-      }
-    );
-
-    const identity = JSON.parse(result);
-
-    console.log(`✅ AWS OK: ${identity.Arn}`);
-    return true;
-  } catch (error) {
-    console.error("❌ AWS認証NG");
-    console.error("   aws login --remote を実行してください");
-    return false;
-  }
-}
-
-function checkBluetooth(): boolean {
-  console.log("📡 Bluetooth確認...");
-
-  try {
-    const result = execFileSync(
-      "bluetoothctl",
-      ["info", PHONE_MAC],
-      {
-        encoding: "utf8",
-        stdio: ["ignore", "pipe", "pipe"],
-      }
-    );
-
-    if (/Connected:\s*yes/i.test(result)) {
-      console.log(`✅ iPhone Bluetooth接続OK: ${PHONE_MAC}`);
-      return true;
-    }
-
-    console.error("❌ iPhoneがBluetooth接続されていません");
-    return false;
-  } catch (error) {
-    console.error("❌ Bluetooth確認失敗");
-    return false;
-  }
-}
-
-export function runSystemCheck(): boolean {
-  console.log("");
-  console.log("================================");
-  console.log("🔎 システムチェック開始");
-  console.log("================================");
-  console.log("");
-
-  const awsOK = checkAWS();
-  const bluetoothOK = checkBluetooth();
-
-  console.log("");
-  console.log("================================");
-
-  if (!awsOK || !bluetoothOK) {
-    console.error("❌ システムチェック失敗");
-    console.error("❌ Nova / 自動着信 / Webサーバーは起動しません");
-    console.log("================================");
-    console.log("");
-
-    return false;
+  if (!ok) {
+    process.exit(1);
   }
 
-  console.log("✅ システムチェック完了");
-  console.log("================================");
   console.log("");
+  console.log("🚀 サービス起動開始");
 
-  return true;
+  await import("./incoming-call-check");
+  await import("./server");
 }
+
+main().catch((error) => {
+  console.error("❌ 起動エラー:", error);
+  process.exit(1);
+});
