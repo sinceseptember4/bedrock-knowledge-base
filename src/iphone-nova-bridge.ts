@@ -24,87 +24,118 @@ let inputResampler: ChildProcessWithoutNullStreams | null = null;
 let outputResampler: ChildProcessWithoutNullStreams | null = null;
 let pacat: ChildProcessWithoutNullStreams | null = null;
 
-async function startNovaSession() {
-  console.log("🤖 Nova 2 Sonic セッション開始");
+let isRunning = false;
 
-  const bedrockClient = new NovaSonicBidirectionalStreamClient({
-    clientConfig: {
-      region: AWS_REGION,
-      credentials: fromLoginCredentials({
-        profile: "default",
-      }),
-    },
-  });
+/**
+ * Nova Sonicセッション開始
+ *
+ * importしただけでは起動しない。
+ * 着信時などに startNovaSession() を呼ぶ。
+ */
+export async function startNovaSession() {
+  if (isRunning) {
+    console.log("⚠️ Novaはすでに起動しています");
+    return;
+  }
 
-  const sessionId = `iphone-${Date.now()}`;
+  isRunning = true;
 
-  session = bedrockClient.createStreamSession(sessionId);
+  try {
+    console.log("🤖 Nova 2 Sonic セッション開始");
 
-  session.onEvent("textOutput", (data) => {
-    console.log("📝 Nova:", data);
-  });
+    const bedrockClient = new NovaSonicBidirectionalStreamClient({
+      clientConfig: {
+        region: AWS_REGION,
+        credentials: fromLoginCredentials({
+          profile: "default",
+        }),
+      },
+    });
 
-  session.onEvent("contentStart", (data) => {
-    console.log("📡 contentStart:", data);
-  });
+    const sessionId = `iphone-${Date.now()}`;
 
-  session.onEvent("audioOutput", (data) => {
-    try {
-      if (!data?.content) {
-        return;
+    session = bedrockClient.createStreamSession(sessionId);
+
+    session.onEvent("textOutput", (data) => {
+      console.log("📝 Nova:", data);
+    });
+
+    session.onEvent("contentStart", (data) => {
+      console.log("📡 contentStart:", data);
+    });
+
+    session.onEvent("audioOutput", (data) => {
+      try {
+        if (!data?.content) {
+          return;
+        }
+
+        const audio = Buffer.from(data.content, "base64");
+
+        if (outputResampler?.stdin.writable) {
+          outputResampler.stdin.write(audio);
+        }
+      } catch (error) {
+        console.error("❌ Nova音声処理エラー:", error);
       }
+    });
 
-      const audio = Buffer.from(data.content, "base64");
+    session.onEvent("error", (data) => {
+      console.error("❌ Novaエラー:", data);
+    });
 
-      if (outputResampler?.stdin.writable) {
-        outputResampler.stdin.write(audio);
-      }
-    } catch (error) {
-      console.error("❌ Nova音声処理エラー:", error);
-    }
-  });
+    session.onEvent("streamComplete", () => {
+      console.log("🛑 Novaストリーム終了");
+    });
 
-  session.onEvent("error", (data) => {
-    console.error("❌ Novaエラー:", data);
-  });
+    // Novaとのストリームを開始
+    bedrockClient.initiateBidirectionalStreaming(sessionId);
 
-  session.onEvent("streamComplete", () => {
-    console.log("🛑 Novaストリーム終了");
-  });
+    // セッション開始
+    await session.setupSessionAndPromptStart();
 
-  // Novaとのストリームを先に開始
-  bedrockClient.initiateBidirectionalStreaming(sessionId);
+    // システムプロンプト
+    await session.setupSystemPrompt(
+      undefined,
+      DefaultSystemPrompt
+    );
 
-  // セッション開始
-  await session.setupSessionAndPromptStart();
+    // iPhone HFP入力は8kHzなのでNova用16kHzへ変換
+    await session.setupStartAudio({
+      ...DefaultAudioInputConfiguration,
+      sampleRateHertz: 16000,
+      sampleSizeBits: 16,
+      channelCount: 1,
+      encoding: "base64",
+      mediaType: "audio/lpcm",
+    });
 
-  // システムプロンプト
-  await session.setupSystemPrompt(
-    undefined,
-    DefaultSystemPrompt
-  );
+    console.log("✅ Novaセッション準備完了");
 
-  // iPhone HFP入力は8kHzなのでNova用16kHzへ変換
-  await session.setupStartAudio({
-    ...DefaultAudioInputConfiguration,
-    sampleRateHertz: 16000,
-    sampleSizeBits: 16,
-    channelCount: 1,
-    encoding: "base64",
-    mediaType: "audio/lpcm",
-  });
+    startAudioPipeline();
 
-  console.log("✅ Novaセッション準備完了");
+  } catch (error) {
+    isRunning = false;
+    session = null;
 
-  startAudioPipeline();
+    console.error("❌ Nova起動失敗:", error);
+    throw error;
+  }
 }
 
+/**
+ * HFP → Nova / Nova → HFP 音声パイプライン開始
+ */
 function startAudioPipeline() {
   writeFileSync("/tmp/nova-input.raw", "");
+
   console.log("🎙 iPhone HFP → Nova パイプライン開始");
 
-  // iPhone HFP:
+  // =========================
+  // iPhone HFP → Linux
   // 8kHz / 16bit / mono
+  // =========================
+
   parec = spawn("parec", [
     `--device=${HFP_SOURCE}`,
     "--rate=8000",
@@ -112,7 +143,10 @@ function startAudioPipeline() {
     "--format=s16le",
   ]);
 
+  // =========================
   // 8kHz → 16kHz
+  // =========================
+
   inputResampler = spawn("sox", [
     "-t",
     "raw",
@@ -125,6 +159,7 @@ function startAudioPipeline() {
     "-c",
     "1",
     "-",
+
     "-t",
     "raw",
     "-r",
@@ -142,7 +177,7 @@ function startAudioPipeline() {
 
   inputResampler.stdout.on("data", async (chunk: Buffer) => {
     try {
-      // Novaへ送る直前の音声をそのまま録音
+      // Novaへ送る直前の音声を録音
       appendFileSync("/tmp/nova-input.raw", chunk);
 
       if (session) {
@@ -161,7 +196,10 @@ function startAudioPipeline() {
     console.error("sox input:", data.toString());
   });
 
-  // Nova 24kHz → iPhone HFP 8kHz
+  // =========================
+  // Nova 24kHz → 8kHz
+  // =========================
+
   outputResampler = spawn("sox", [
     "-t",
     "raw",
@@ -174,6 +212,7 @@ function startAudioPipeline() {
     "-c",
     "1",
     "-",
+
     "-t",
     "raw",
     "-r",
@@ -187,7 +226,10 @@ function startAudioPipeline() {
     "-",
   ]);
 
-  // PulseAudio → Bluetooth HFP
+  // =========================
+  // Linux → iPhone HFP
+  // =========================
+
   pacat = spawn("pacat", [
     "--playback",
     `--device=${HFP_SINK}`,
@@ -212,31 +254,88 @@ function startAudioPipeline() {
   console.log("   Nova 24kHz → iPhone 8kHz");
 }
 
-async function cleanup() {
-  console.log("🧹 終了処理");
+/**
+ * Nova Sonicセッション停止
+ *
+ * 通話終了時に呼ぶ。
+ */
+export async function stopNovaSession() {
+  if (!isRunning && !session) {
+    return;
+  }
+
+  console.log("🛑 Nova 2 Sonic セッション停止");
+
+  isRunning = false;
 
   try {
+    // =========================
+    // 音声プロセス停止
+    // =========================
+
     parec?.kill("SIGTERM");
     inputResampler?.kill("SIGTERM");
     outputResampler?.kill("SIGTERM");
     pacat?.kill("SIGTERM");
 
-    if (session) {
-      await session.endAudioContent();
-      await session.endPrompt();
-      await session.close();
-    }
-  } catch (error) {
-    console.error("cleanup error:", error);
-  }
+    parec = null;
+    inputResampler = null;
+    outputResampler = null;
+    pacat = null;
 
-  process.exit(0);
+    // =========================
+    // Novaセッション停止
+    // =========================
+
+    if (session) {
+      try {
+        await session.endAudioContent();
+      } catch (error) {
+        console.error("endAudioContent error:", error);
+      }
+
+      try {
+        await session.endPrompt();
+      } catch (error) {
+        console.error("endPrompt error:", error);
+      }
+
+      try {
+        await session.close();
+      } catch (error) {
+        console.error("session close error:", error);
+      }
+
+      session = null;
+    }
+
+    console.log("✅ Novaセッション停止完了");
+
+  } catch (error) {
+    console.error("❌ Nova停止エラー:", error);
+
+    session = null;
+  }
 }
 
-process.on("SIGINT", cleanup);
-process.on("SIGTERM", cleanup);
+/**
+ * このファイルを直接実行した場合だけNovaを起動する。
+ *
+ * setup.tsからimportしただけでは起動しない。
+ */
+if (require.main === module) {
+  startNovaSession().catch((error) => {
+    console.error("❌ 起動失敗:", error);
+    process.exit(1);
+  });
 
-startNovaSession().catch((error) => {
-  console.error("❌ 起動失敗:", error);
-  process.exit(1);
-});
+  process.on("SIGINT", async () => {
+    await stopNovaSession();
+    process.exit(0);
+  });
+
+  process.on("SIGTERM", async () => {
+    await stopNovaSession();
+    process.exit(0);
+  });
+}
