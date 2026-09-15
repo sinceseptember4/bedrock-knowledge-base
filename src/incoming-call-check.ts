@@ -14,6 +14,12 @@ async function checkIncomingCall() {
       DEVICE_PATH
     );
 
+    // VoiceCallManager がまだ取得できない場合は次回チェック
+    if (!obj.interfaces["org.ofono.VoiceCallManager"]) {
+      console.log("📞 VoiceCallManager待機中...");
+      return;
+    }
+
     const manager = obj.getInterface(
       "org.ofono.VoiceCallManager"
     ) as any;
@@ -58,7 +64,6 @@ async function checkIncomingCall() {
         answering = false;
       }
     }
-
   } catch (error) {
     console.error("着信チェックエラー:", error);
   }
